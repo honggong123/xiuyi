@@ -676,17 +676,67 @@ XY.Game = (function () {
   };
 
   // ================= 堂屋探索 =================
+  // 注意：这里的 key 必须与 story.js 的 HOTSPOTS[].id 一致。
+  // 绣绷热点的 id 是 'hoopCenter'（不是它 beats 内部设的 'peony' 标志），
+  // 早期误写成 'peony' 会导致全部探索后底部提示仍停留在绣绷那句。
   const HINTS = [
     ['thimble', '窗台上，好像有什么在反光。'],
     ['basket', '笸箩里，丝线该理一理了。'],
     ['medicine', '门边挂着的……是什么？'],
     ['phone', '电话机旁，贴着一张纸条。'],
     ['photos', '照片墙上，落了点灰。'],
-    ['peony', '嫁衣上的牡丹，还差最后三段。']
+    ['hoopCenter', '嫁衣上的牡丹，还差最后三段。']
   ];
 
+  // 回忆进度指示器：六枚针脚排成一道短绣线，
+  // 已收针（已探索）的回忆用朱砂实针 + 中心点，未收的只留虚针。
+  // 目的：探索阶段给玩家明确的「还差几件」目标感，避免全屋找完仍不知进度。
+  function drawMemoryProgress(ctx) {
+    const P = A.PALETTE;
+    const n = S.HOTSPOTS.length;
+    const gap = 24;
+    const x0 = 28;
+    const y = 92;
+    // 以热点 id 为准统计（与 HOTSPOTS 一一对应），
+    // 不能用 S.REQUIRED——那里的 'peony' 是绣绷热点的内部标志，不是热点 id。
+    const done = S.HOTSPOTS.filter(function (h) { return game.flags[h.id]; }).length;
+
+    ctx.save();
+    // 半透明衬底：避免压到门框/照片等深色背景时看不清
+    A.panel(ctx, x0 - 12, y - 34, 36 + n * gap + 20, 54,
+      { fill: 'rgba(248,243,229,0.82)' });
+
+    A.setFont(ctx, 16, { align: 'left' });
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = P.ink;
+    ctx.fillText('回忆', x0, y + 5);
+
+    for (let i = 0; i < n; i++) {
+      const cx = x0 + 52 + i * gap;
+      const hit = !!game.flags[S.HOTSPOTS[i].id];
+      ctx.save();
+      ctx.lineCap = 'round';
+      if (hit) {
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = P.red;
+        ctx.lineWidth = 3.4;
+      } else {
+        ctx.globalAlpha = 0.32;
+        ctx.strokeStyle = P.ink;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 4]);
+      }
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, y + 5);
+      ctx.lineTo(cx + 6, y - 5);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   STATES.explore = function () {
-    const st = { hoverId: null, checked: false };
+    const st = { hoverId: null, checked: false, marks: [] };
 
     function allDone() {
       return S.REQUIRED.every(function (f) { return game.flags[f]; });
@@ -699,6 +749,13 @@ XY.Game = (function () {
 
     st.update = function (dt) {
       Au.pad(true);
+      // 收针痕迹：刚探索完的热点原位留一枚朱砂针脚，随时间淡出。
+      // 作用：玩家从记忆回到堂屋时，能立刻看见"刚才那处在哪、已收针"，
+      // 而不是让热点无声消失（此前热点直接不见，回场景后容易失去方位感）。
+      for (let i = st.marks.length - 1; i >= 0; i--) {
+        st.marks[i].t -= dt;
+        if (st.marks[i].t <= 0) st.marks.splice(i, 1);
+      }
       if (!st.checked) {
         st.checked = true;
         if (allDone() && !game.flags.daughter) triggerDaughter();
@@ -720,7 +777,11 @@ XY.Game = (function () {
         if (game.flags[hs.id]) continue;
         if (U.dist(p.x, p.y, hs.x, hs.y) < hs.r) {
           const locked = hs.requires && hs.requires.some(function (f) { return !game.flags[f]; });
-          if (!locked) { game.flags[hs.id] = true; persist(); }
+          if (!locked) {
+            game.flags[hs.id] = true;
+            persist();
+            st.marks.push({ x: hs.x, y: hs.y, r: hs.r, t: 2.4, life: 2.4 });
+          }
           setState('script', {
             beats: locked ? hs.lockedBeats : hs.beats,
             bg: 'room',
@@ -761,6 +822,32 @@ XY.Game = (function () {
         }
       });
 
+      // 收针痕迹：刚探索完的热点原位留一圈渐隐的"收针环"，
+      // 给玩家"这里刚收过针"的空间确认（热点本身已按原设计消失）。
+      //
+      // 设计取舍：**不画十字/叉**。热点中心往往正落在物体（甚至人物脸）中心，
+      // 在中心画交叉记号会像给物体打了个叉（photos 热点更是直接压在人脸上，
+      // 上一版十字标记即因此被移除）。改为沿热点外缘描一圈针脚环，
+      // 既不遮挡物体，又能明确圈出"这处已收针"。
+      st.marks.forEach(function (mk) {
+        const k = Math.max(0, mk.t / mk.life);
+        const R = mk.r * 0.34 + (1 - k) * mk.r * 0.16;   // 随淡出微微外扩
+        const nSeg = 12;
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = P.red;
+        ctx.lineWidth = 2.6;
+        for (let i = 0; i < nSeg; i++) {
+          const a0 = (U.TAU / nSeg) * i + 0.14;
+          const a1 = a0 + (U.TAU / nSeg) * 0.62;
+          ctx.globalAlpha = (0.5 + 0.35 * Math.sin(i * 1.7)) * k;
+          ctx.beginPath();
+          ctx.arc(mk.x, mk.y, R, a0, a1);
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+
       // HUD
       A.setFont(ctx, 24, { weight: 'bold', align: 'left' });
       ctx.fillStyle = 'rgba(58,51,43,0.85)';
@@ -768,7 +855,12 @@ XY.Game = (function () {
       btn(ctx, 1044, 20, 108, 44, '相册', function () { openAlbum(true); }, { size: 20 });
       btn(ctx, 1164, 20, 92, 44, '设置', function () { game.overlay = { type: 'settings' }; }, { size: 20 });
 
-      // 底部提示
+      // 回忆进度：绣绷上的六针（收针的回忆用朱砂实针，未收的留虚针）
+      drawMemoryProgress(ctx);
+
+      // 底部提示：指向第一个尚未探索的热点。
+      // 注：六件找齐的瞬间 allDone() 即触发女儿回家剧情并切走本状态，
+      // 因此这里无需（也来不及）处理"全部收齐"的文案。
       let hint = '（点击发光处，走进她的记忆。按 Esc 打开相册。）';
       for (let i = 0; i < HINTS.length; i++) {
         if (!game.flags[HINTS[i][0]]) { hint = HINTS[i][1]; break; }
