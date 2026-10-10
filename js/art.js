@@ -11,7 +11,10 @@ XY.Art = (function () {
     silk: '#f5efdf', silkShade: '#e2d5b8', silkDeep: '#cfc0a0',
     red: '#b03a2e', redDeep: '#8c2b22', redLight: '#d46a5f',
     gold: '#c9a86a', goldDeep: '#a5854a', moss: '#7a8a5f', mossDeep: '#55613f',
-    wood: '#6b4a2f', woodDark: '#453020', wall: '#ece1c8', wallShade: '#dccfae'
+    wood: '#6b4a2f', woodDark: '#453020', wall: '#ece1c8', wallShade: '#dccfae',
+    // 三级表面：在现有色内派生明度梯度，用于区分「底 / 面 / 控件」层次
+    surfaceHi: '#faf5e9',   // 卡片、悬停态、浮起元素
+    surfaceLo: '#e7dbc2'    // 凹槽、输入区、未激活态
   };
 
   // ---------- 缓存纹理 ----------
@@ -251,6 +254,104 @@ XY.Art = (function () {
     ctx.arcTo(x, y + h, x, y, r);
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
+  }
+
+  // ---------- 图标库（线性水墨风，全部代码绘制，零外部资源） ----------
+  // 以 (x,y) 为图标中心，size 为外接方框边长，线宽随尺寸自适应
+  function icon(ctx, name, x, y, size, color) {
+    const u = size / 2;
+    const lw = Math.max(1.2, size * 0.085);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = color || PALETTE.ink;
+    ctx.fillStyle = color || PALETTE.ink;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (name === 'needle') {
+      // 绣针：斜向针身 + 针眼 + 一缕线
+      ctx.beginPath();
+      ctx.moveTo(-u * 0.68, u * 0.72); ctx.lineTo(u * 0.58, -u * 0.58); ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(u * 0.40, -u * 0.40, u * 0.17, u * 0.10, -Math.PI / 4, 0, U.TAU); ctx.stroke();
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(-u * 0.68, u * 0.72);
+      ctx.quadraticCurveTo(-u * 1.02, u * 0.34, -u * 0.58, u * 0.06);
+      ctx.stroke();
+    } else if (name === 'thimble') {
+      // 顶针：上圆下方 + 麻点
+      ctx.beginPath();
+      ctx.moveTo(-u * 0.56, u * 0.76); ctx.lineTo(-u * 0.56, -u * 0.10);
+      ctx.quadraticCurveTo(-u * 0.56, -u * 0.80, 0, -u * 0.80);
+      ctx.quadraticCurveTo(u * 0.56, -u * 0.80, u * 0.56, -u * 0.10);
+      ctx.lineTo(u * 0.56, u * 0.76);
+      ctx.closePath(); ctx.stroke();
+      ctx.globalAlpha = 0.55;
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 2; c++) {
+        ctx.beginPath();
+        ctx.arc(-u * 0.22 + c * u * 0.44, -u * 0.36 + r * u * 0.44, lw * 0.55, 0, U.TAU);
+        ctx.fill();
+      }
+    } else if (name === 'eye') {
+      // 认知友好：眼睛
+      ctx.beginPath();
+      ctx.moveTo(-u * 0.92, 0);
+      ctx.quadraticCurveTo(0, -u * 0.88, u * 0.92, 0);
+      ctx.quadraticCurveTo(0, u * 0.88, -u * 0.92, 0);
+      ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, u * 0.30, 0, U.TAU); ctx.fill();
+    } else if (name === 'play') {
+      // 自动播放：三角
+      ctx.beginPath();
+      ctx.moveTo(-u * 0.52, -u * 0.78);
+      ctx.lineTo(u * 0.78, 0);
+      ctx.lineTo(-u * 0.52, u * 0.78);
+      ctx.closePath(); ctx.stroke();
+    } else if (name === 'sound') {
+      // 声音：喇叭 + 两道声波
+      ctx.beginPath();
+      ctx.moveTo(-u * 0.86, -u * 0.28); ctx.lineTo(-u * 0.42, -u * 0.28);
+      ctx.lineTo(u * 0.08, -u * 0.74); ctx.lineTo(u * 0.08, u * 0.74);
+      ctx.lineTo(-u * 0.42, u * 0.28); ctx.lineTo(-u * 0.86, u * 0.28);
+      ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(u * 0.08, 0, u * 0.50, -0.95, 0.95); ctx.stroke();
+      ctx.beginPath(); ctx.arc(u * 0.08, 0, u * 0.84, -0.82, 0.82); ctx.stroke();
+    } else if (name === 'warn') {
+      // 警示：三角 + 叹号
+      ctx.beginPath();
+      ctx.moveTo(0, -u * 0.86);
+      ctx.lineTo(u * 0.94, u * 0.70);
+      ctx.lineTo(-u * 0.94, u * 0.70);
+      ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -u * 0.28); ctx.lineTo(0, u * 0.16); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, u * 0.46, lw * 0.55, 0, U.TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 绣线分隔：用短针脚画横贯分隔线，默认两端渐隐（fade:false 则等强度，用于进度条）
+  function divider(ctx, x, y, w, o) {
+    o = o || {};
+    const n = Math.max(1, o.n || Math.round(w / 14));
+    const alpha = o.alpha == null ? 0.28 : o.alpha;
+    const fade = o.fade !== false;
+    ctx.save();
+    ctx.strokeStyle = o.color || PALETTE.inkLight;
+    ctx.lineWidth = o.w || 1.6;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const t = n > 1 ? i / (n - 1) : 0.5;
+      const a = fade ? alpha * Math.sin(Math.PI * (0.12 + 0.76 * t)) : alpha;
+      const seg = w / n;
+      ctx.globalAlpha = Math.max(0, a);
+      ctx.beginPath();
+      ctx.moveTo(x + i * seg + seg * 0.16, y);
+      ctx.lineTo(x + i * seg + seg * 0.84, y);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // 绣针光标
@@ -1226,6 +1327,7 @@ XY.Art = (function () {
     init, draw, inkStroke, stitchPath, backStitch, prickedDot,
     setFont, wrapText, panel, roundRect, vignette, paperPattern, mixc,
     inkFace, drawInkFace, faceHoop, needle, titleStitch, grad,
+    icon, divider,
     invalidateBackCache: function () { for (var k in backCache) delete backCache[k]; },
     _silkTex: function () { return silkCv; },
     PALETTE, W, H, img

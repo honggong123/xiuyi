@@ -159,6 +159,15 @@ XY.Album = (function () {
     A.setFont(ctx, 15, { align: 'left' });
     ctx.fillStyle = P.inkLight;
     ctx.fillText(count() + ' / ' + Object.keys(XY.Story.MEMORIES).length + ' 页', 376, 130);
+
+    // 收集进度：底衬 + 已完成段，用绣线表达「收针了几件」
+    const memTotal = Object.keys(XY.Story.MEMORIES).length;
+    const memPct = memTotal ? Math.min(1, count() / memTotal) : 0;
+    A.divider(ctx, 240, 154, 240, { color: P.inkLight, alpha: 0.16, w: 2, n: 16, fade: false });
+    if (memPct > 0) {
+      A.divider(ctx, 240, 154, 240 * memPct,
+        { color: P.red, alpha: 0.72, w: 2.6, n: Math.max(1, Math.round(16 * memPct)), fade: false });
+    }
     if (revealT > 0) {
       ctx.fillStyle = 'rgba(140,43,34,' + Math.min(0.85, revealT) + ')';
       A.setFont(ctx, 17, { align: 'left' });
@@ -192,11 +201,29 @@ XY.Album = (function () {
         const fade = cor ? 0.6 : 1;
         const hov = hoverCell === i;
         ctx.save();
-        if (hov) ctx.translate(0, -3);
+        if (hov) {
+          ctx.translate(0, -3);
+          // 悬停：卡片下方补一层更深的投影，强化「浮起」手感
+          ctx.save();
+          ctx.shadowColor = 'rgba(30,20,10,0.55)';
+          ctx.shadowBlur = 26; ctx.shadowOffsetY = 12;
+          ctx.fillStyle = 'rgba(0,0,0,0.4)';
+          A.roundRect(ctx, r.x, r.y, r.w, r.h, 10); ctx.fill();
+          ctx.restore();
+        }
         A.panel(ctx, r.x, r.y, r.w, r.h, {
-          fill: cor ? 'rgba(238,226,203,' + fade + ')' : undefined,
-          border: cor ? 'rgba(140,43,34,0.55)' : undefined
+          fill: cor ? 'rgba(238,226,203,' + fade + ')' : (hov ? 'rgba(250,245,233,0.97)' : undefined),
+          border: cor ? 'rgba(140,43,34,0.55)' : (hov ? 'rgba(176,58,46,0.5)' : undefined),
+          bw: hov ? 1.6 : 2
         });
+        // 状态徽章：左上角小圆点，完好=苔绿、已拆改=朱砂
+        ctx.save();
+        ctx.beginPath(); ctx.arc(r.x + 17, r.y + 17, 5, 0, U.TAU);
+        ctx.fillStyle = cor ? P.red : P.moss; ctx.fill();
+        ctx.globalAlpha = 0.3;
+        ctx.beginPath(); ctx.arc(r.x + 17, r.y + 17, 8.5, 0, U.TAU);
+        ctx.strokeStyle = cor ? P.red : P.moss; ctx.lineWidth = 1.4; ctx.stroke();
+        ctx.restore();
         glyph(ctx, mem.icon, r.x + r.w / 2, r.y + 74, 78, cor ? 0.55 : 1);
         A.setFont(ctx, 21, { weight: 'bold', align: 'center' });
         ctx.fillStyle = cor ? 'rgba(107,79,47,' + (0.75) + ')' : P.ink;
@@ -224,6 +251,33 @@ XY.Album = (function () {
       const mem = XY.Story.MEMORIES[detailId];
       const cor = collected[detailId] && collected[detailId].corrupted;
       A.panel(ctx, 240, 170, 800, 396, { fill: cor ? 'rgba(236,222,196,0.96)' : undefined });
+
+      // 元信息行：填住面板顶部空白，同时给出编号与状态
+      const memIdx = order.indexOf(detailId) + 1;
+      A.setFont(ctx, 13, { align: 'left' });
+      ctx.fillStyle = cor ? P.redDeep : P.inkLight;
+      ctx.fillText('第 ' + memIdx + ' 件 · ' + (cor ? '已拆改' : '已收针'), 440, 214);
+
+      // 标题下绣线：把元信息与标题分隔开
+      A.divider(ctx, 440, 232, 300, { color: P.inkLight, alpha: 0.3, w: 1.6 });
+
+      // 右侧缠枝纹样：填充面板右缘的空白，呼应苏绣缠枝纹（正弦取点保证曲线平滑）
+      const vine = [];
+      for (let vi = 0; vi <= 12; vi++) {
+        const vt = vi / 12;
+        vine.push({ x: 990 + Math.sin(vt * Math.PI * 3) * 16, y: 250 + vt * 258 });
+      }
+      A.stitchPath(ctx, vine, { color: P.mossDeep, w: 4, gap: 7, alpha: 0.13, seed: 91 });
+
+      // 左下角针脚装饰：与对话框角标同一套语言
+      ctx.save();
+      ctx.strokeStyle = 'rgba(176,58,46,0.4)';
+      ctx.lineWidth = 2; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(262, 538); ctx.lineTo(262, 544); ctx.lineTo(268, 544);
+      ctx.stroke();
+      ctx.restore();
+
       glyph(ctx, mem.icon, 330, 300, 120, cor ? 0.5 : 1);
       A.setFont(ctx, 30, { weight: 'bold', align: 'left' });
       ctx.fillStyle = A.PALETTE.ink;

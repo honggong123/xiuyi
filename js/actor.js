@@ -17,11 +17,11 @@ XY.Actor = (function () {
   const POS_X = { left: 340, center: 640, right: 940 };
   const BASE_Y = 762;   // 立绘底边（沉入画面下缘 / 对话框之后）
   // PNG 立绘绘制高度系数（按角色微调画面占比，Q 版素材可调小）
-  const PNG_H = { xiuyun: 520, niannian: 660 };
+  const PNG_H = { xiuyun: 640, niannian: 640 };
   // PNG 头部裁切规格（占图宽/高的比例，r 为半径占图宽比例）——供头像与相框裁脸
   const PNG_HEAD = {
-    xiuyun:   { cx: 0.50, cy: 0.36, r: 0.26 },
-    niannian: { cx: 0.51, cy: 0.34, r: 0.21 }
+    xiuyun:   { cx: 0.475, cy: 0.149, r: 0.257 },
+    niannian: { cx: 0.467, cy: 0.182, r: 0.209 }
   };
   const DEFAULT_EXPR = { xiuyun: 'calm', niannian: 'normal' };
 
@@ -269,6 +269,48 @@ XY.Actor = (function () {
   }
 
   // ---------- 绘制 ----------
+  // PNG 立绘的病程渲染：随 forget 去饱和、震颤、脱针缺口。
+  // PNG 生效时 drawBody 不再执行，故这些效果必须在 PNG 路径上单独实现，
+  // 否则"绣云随病程被拆线"会在有 PNG 素材时整体失效。
+  const gapCv = document.createElement('canvas');
+  const gapCtx = gapCv.getContext('2d');
+  function drawSkin(ctx, a, skin, forget, bob, rise) {
+    const f = a.char === 'xiuyun' ? U.clamp(forget || 0, 0, 1) : 0;
+    const h = PNG_H[a.char] || 640, w = h * skin.width / skin.height;
+    const x = a.x - w / 2, y = BASE_Y - h + bob + rise;
+    if (f <= 0.02) { ctx.drawImage(skin, x, y, w, h); return; }
+
+    const cw = Math.max(1, Math.round(w)), chh = Math.max(1, Math.round(h));
+    if (gapCv.width !== cw || gapCv.height !== chh) { gapCv.width = cw; gapCv.height = chh; }
+    gapCtx.clearRect(0, 0, cw, chh);
+    gapCtx.save();
+    // 去饱和：病程越深越褪色（部分环境不支持 filter，静默降级）
+    try { gapCtx.filter = 'saturate(' + (1 - 0.62 * f).toFixed(3) + ')'; } catch (e) {}
+    gapCtx.drawImage(skin, 0, 0, cw, chh);
+    gapCtx.restore();
+    if (f > 0.35) {
+      // 脱针缺口：在离屏层用 destination-out 擦出随时间游走的细横缝。
+      // 只擦离屏画布，不会误伤已绘制的场景背景。
+      const n = Math.round((f - 0.35) * 14);
+      gapCtx.save();
+      gapCtx.globalCompositeOperation = 'destination-out';
+      gapCtx.fillStyle = '#000';
+      for (let i = 0; i < n; i++) {
+        const sd = i * 12.9898 + 4.1;
+        const yy = ((Math.sin(sd) * 0.5 + 0.5) * 0.84 + 0.08) * chh + Math.sin(a.t * 0.7 + sd) * 5;
+        const rw = 0.22 + (Math.cos(sd * 1.7) * 0.5 + 0.5) * 0.68;
+        const xx = (Math.sin(sd * 2.3) * 0.5 + 0.5) * (1 - rw) * cw;
+        gapCtx.fillRect(xx, yy, rw * cw, 1 + (f - 0.35) * 2.6);
+      }
+      gapCtx.restore();
+    }
+    // 震颤：两个不同频率叠加，避免规律感
+    ctx.save();
+    ctx.translate(Math.sin(a.t * 13.7) * f * 1.6, Math.cos(a.t * 11.1) * f * 1.1);
+    ctx.drawImage(gapCv, x, y);
+    ctx.restore();
+  }
+
   function draw(ctx, forget) {
     if (!actors.length) return;
     const ordered = actors.slice().sort(function (a, b) {
@@ -285,9 +327,8 @@ XY.Actor = (function () {
       ctx.save();
       ctx.globalAlpha = alpha * dim;
       if (skin) {
-        // PNG 立绘：等比缩放，底边沉入 BASE_Y
-        const h = PNG_H[a.char] || 640, w = h * skin.width / skin.height;
-        ctx.drawImage(skin, a.x - w / 2, BASE_Y - h + bob + rise, w, h);
+        // PNG 立绘：等比缩放，底边沉入 BASE_Y；并按病程做去饱和/震颤/脱针
+        drawSkin(ctx, a, skin, forget, bob, rise);
       } else {
         ctx.translate(0, rise);
         ctx.save();

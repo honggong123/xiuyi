@@ -166,8 +166,24 @@ XY.Puzzle = (function () {
     A.setFont(ctx, 17, { align: 'center' });
     ctx.fillStyle = P.inkLight;
     ctx.fillText(this.def.hint, 640, 96);
-    // 进度
+    // 进度：绣线进度条（底衬 + 已完成段 + 节点圆点），比纯文字更直观
     const doneN = this.paths.filter(function (p) { return p.done; }).length;
+    const pTot = this.paths.length;
+    const pBarW = 200, pBarX = 1250 - pBarW, pBarY = 648;
+    A.divider(ctx, pBarX, pBarY, pBarW, { color: P.inkLight, alpha: 0.18, w: 2, n: 12, fade: false });
+    if (doneN > 0) {
+      A.divider(ctx, pBarX, pBarY, pBarW * (doneN / pTot),
+        { color: P.red, alpha: 0.75, w: 2.6, n: Math.max(1, Math.round(12 * doneN / pTot)), fade: false });
+    }
+    for (let pi = 0; pi < pTot; pi++) {
+      const px = pBarX + pBarW * (pTot === 1 ? 0.5 : pi / (pTot - 1));
+      ctx.save();
+      ctx.beginPath(); ctx.arc(px, pBarY, 3.2, 0, U.TAU);
+      ctx.fillStyle = pi < doneN ? P.red : P.silkDeep;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(107,79,47,0.4)'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.restore();
+    }
     A.setFont(ctx, 18, { align: 'right' });
     ctx.fillStyle = P.inkLight;
     ctx.fillText('第 ' + Math.min(doneN + 1, this.paths.length) + ' / ' + this.paths.length + ' 段', 1250, 676);

@@ -72,6 +72,23 @@ XY.Game = (function () {
     A.setFont(ctx, opts.size || 22, { align: 'center' });
     ctx.fillStyle = opts.danger ? A.PALETTE.redDeep : (hov && !opts.disabled ? A.PALETTE.redDeep : A.PALETTE.ink);
     ctx.fillText(label, x + w / 2, y + h / 2 + (opts.size || 22) * 0.35);
+    // 可选状态点：贴在居中文字左侧，用颜色而非读字来表达开/关
+    if (opts.dot) {
+      const tw = ctx.measureText(label).width;
+      const dx = x + w / 2 - tw / 2 - 15, dy = y + h / 2;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(dx, dy, 5, 0, U.TAU);
+      if (opts.dot === 'on') {
+        ctx.fillStyle = A.PALETTE.moss; ctx.fill();
+        ctx.globalAlpha = 0.35;
+        ctx.beginPath(); ctx.arc(dx, dy, 8.5, 0, U.TAU);
+        ctx.strokeStyle = A.PALETTE.moss; ctx.lineWidth = 1.4; ctx.stroke();
+      } else {
+        ctx.fillStyle = A.PALETTE.surfaceLo; ctx.fill();
+        ctx.strokeStyle = 'rgba(107,79,47,0.45)'; ctx.lineWidth = 1.2; ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
   function fireBtns(p, overlayOnly) {
     for (let i = btns.length - 1; i >= 0; i--) {
@@ -212,6 +229,17 @@ XY.Game = (function () {
     st.update = function (dt) { st.t += dt; };
     st.draw = function (ctx) {
       A.draw(ctx, 'silk', game.time);
+      // 飘絮：极轻的丝线浮尘，打破缎面背景的绝对静止
+      ctx.save();
+      for (let i = 0; i < 14; i++) {
+        const sd = i * 7.31;
+        const px = ((Math.sin(sd) * 0.5 + 0.5) * 1.1 - 0.05) * 1280;
+        const py = ((Math.cos(sd * 1.7) * 0.5 + 0.5) * 760 + st.t * (5 + (i % 3) * 3)) % 780 - 30;
+        ctx.globalAlpha = 0.09 + 0.06 * Math.sin(st.t * 0.7 + sd);
+        ctx.fillStyle = '#fffaf0';
+        ctx.beginPath(); ctx.arc(px, py, 1.2 + (i % 3) * 0.7, 0, U.TAU); ctx.fill();
+      }
+      ctx.restore();
       const prog = Math.min(1.18, st.t / 2.8);
       A.titleStitch(ctx, S.TITLES.game, 640, 200, 150, prog, A.PALETTE.red);
       A.setFont(ctx, 21, { align: 'center' });
@@ -240,6 +268,21 @@ XY.Game = (function () {
       btn(ctx, 510, canContinue ? 524 : 448, 260, 46, '设 置', function () {
         game.overlay = { type: 'settings' };
       }, { size: 20 });
+
+      // 按钮组左侧朱砂竖线：给按钮一个视觉锚点，两端渐隐
+      const bgTop = 372, bgBot = canContinue ? 570 : 494;
+      const lg = ctx.createLinearGradient(0, bgTop, 0, bgBot);
+      lg.addColorStop(0, 'rgba(176,58,46,0)');
+      lg.addColorStop(0.22, 'rgba(176,58,46,0.45)');
+      lg.addColorStop(0.78, 'rgba(176,58,46,0.45)');
+      lg.addColorStop(1, 'rgba(176,58,46,0)');
+      ctx.save();
+      ctx.strokeStyle = lg; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(486, bgTop); ctx.lineTo(486, bgBot); ctx.stroke();
+      ctx.restore();
+
+      // 页脚分隔绣线：把页脚与主体分开
+      A.divider(ctx, 380, 668, 520, { alpha: 0.22 });
 
       A.setFont(ctx, 13, { align: 'center' });
       ctx.fillStyle = 'rgba(107,95,78,0.7)';
@@ -515,12 +558,32 @@ XY.Game = (function () {
       } else if (sub.kind === 'say') {
         const sp = SPEAKERS[sub.speaker] || { char: 'xiuyun', face: 'old', color: P.ink };
         A.panel(ctx, 120, 538, 1040, 154);
+        // 左上角针脚角标：手工装裱感，弱化「这是一块色板」
+        ctx.save();
+        ctx.strokeStyle = 'rgba(176,58,46,0.5)';
+        ctx.lineWidth = 2; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(132, 550); ctx.lineTo(132, 564); ctx.lineTo(146, 564);
+        ctx.stroke();
+        ctx.restore();
         // 头像（表情随台词/舞台状态；PNG 素材优先，程序化兜底）
         const expr = XY.Actor.exprOf(sp.char) || sub.expr || (sp.char === 'niannian' ? 'normal' : 'calm');
         ctx.save();
         ctx.beginPath(); ctx.arc(204, 614, 56, 0, U.TAU);
         ctx.fillStyle = '#efe6cf'; ctx.fill();
         ctx.strokeStyle = 'rgba(107,79,47,0.7)'; ctx.lineWidth = 2.4; ctx.stroke();
+        ctx.restore();
+        // 头像针脚环：让头像像「绣」在框上，与整体刺绣语言一致
+        ctx.save();
+        ctx.strokeStyle = 'rgba(176,58,46,0.4)';
+        ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+        for (let ti = 0; ti < 28; ti++) {
+          const ta = ti / 28 * U.TAU;
+          ctx.beginPath();
+          ctx.moveTo(204 + Math.cos(ta) * 60.5, 614 + Math.sin(ta) * 60.5);
+          ctx.lineTo(204 + Math.cos(ta) * 65.5, 614 + Math.sin(ta) * 65.5);
+          ctx.stroke();
+        }
         ctx.restore();
         if (!XY.Actor.drawAvatar(ctx, sp.char, expr, 204, 614, 54)) {
           ctx.save();
@@ -532,6 +595,7 @@ XY.Game = (function () {
           });
           ctx.restore();
         }
+        A.icon(ctx, 'needle', 272, 568, 16, sp.color);
         A.setFont(ctx, 24, { weight: 'bold', align: 'left' });
         ctx.fillStyle = sp.color;
         ctx.fillText(sub.speaker, 292, 576);
@@ -541,6 +605,12 @@ XY.Game = (function () {
         const lines = A.wrapText(ctx, shownText(), 820);
         drawTypedLines(ctx, lines, 292, 614, 38, 1e9);
         if (typingDone()) {
+          // 继续提示：加一层极淡圆底，让闪烁的 ▼ 更容易被注意到
+          ctx.save();
+          ctx.globalAlpha = 0.18 + 0.30 * (0.5 + 0.5 * Math.sin(game.time * 4));
+          ctx.fillStyle = P.silkDeep;
+          ctx.beginPath(); ctx.arc(1121, 662, 16, 0, U.TAU); ctx.fill();
+          ctx.restore();
           ctx.save();
           ctx.globalAlpha = 0.5 + 0.5 * Math.sin(game.time * 4);
           A.setFont(ctx, 18, { align: 'right' });
@@ -559,12 +629,29 @@ XY.Game = (function () {
         // 交互即症状：forget 高时选项脱线，悬停可见全文
         const lvl = sub.def.broken != null ? sub.def.broken
           : (game.forget >= 0.6 ? 2 : (game.forget >= 0.35 ? 1 : 0));
+        const NUM = ['壹', '贰', '叁', '肆', '伍'];
         opts.forEach(function (opt, i) {
           const r = { x: 380, y: 388 + i * 86, w: 520, h: 62 };
           const hov = hitRect(game.hoverPt, r);
           btn(ctx, r.x, r.y, r.w, r.h, breakText(opt.text, lvl, hov), function () {
             choose.call(self, opt);
           }, { size: 23 });
+          // 序号：明确「这是第几个选择」，降低决策成本
+          A.setFont(ctx, 20, { align: 'left' });
+          ctx.fillStyle = 'rgba(176,58,46,' + (hov ? 0.85 : 0.5) + ')';
+          ctx.fillText(NUM[i] || String(i + 1), r.x + 24, r.y + r.h / 2 + 7);
+          // 悬停引线箭头：强化可点击感
+          if (hov) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(140,43,34,0.85)';
+            ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            const ax = r.x + r.w - 42, ay = r.y + r.h / 2;
+            ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax + 13, ay); ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(ax + 7, ay - 5); ctx.lineTo(ax + 13, ay); ctx.lineTo(ax + 7, ay + 5);
+            ctx.stroke();
+            ctx.restore();
+          }
         });
       } else if (sub.kind === 'letter') {
         drawLetter(ctx, sub.def);
@@ -649,6 +736,9 @@ XY.Game = (function () {
       A.draw(ctx, 'room', game.time);
 
       S.HOTSPOTS.forEach(function (hs) {
+        // 已探索的热点直接消失（原设计）。
+        // 曾试过在热点中心补一枚「已收针」十字以维持空间记忆，但 photos 热点的中心
+        // 正好落在念念的照片脸上，看着像瑕疵，故移除。
         if (game.flags[hs.id]) return;
         const pulse = 0.5 + 0.5 * Math.sin(game.time * 2.2 + hs.x * 0.05);
         ctx.save();
@@ -704,37 +794,56 @@ XY.Game = (function () {
     A.setFont(ctx, 30, { weight: 'bold', align: 'left' });
     ctx.fillStyle = P.ink;
     ctx.fillText('设 置', 400, 186);
+    // 标题下朱砂短线（与答辩 PPT 母版同一套视觉语言）
+    A.divider(ctx, 400, 199, 62, { color: P.red, alpha: 0.85, w: 2.4, n: 4 });
 
-    A.setFont(ctx, 22, { align: 'left' });
-    ctx.fillStyle = P.ink;
-    ctx.fillText('认知友好模式', 400, 250);
-    A.setFont(ctx, 15, { align: 'left' });
-    ctx.fillStyle = P.inkLight;
-    ctx.fillText('（放大文字、放缓拆解、关闭震颤）', 400, 276);
-    btn(ctx, 700, 218, 180, 52, game.settings.friendly ? '已开启' : '已关闭', function () {
-      game.settings.friendly = !game.settings.friendly;
-      persist();
-    }, { size: 21, overlay: true });
+    // 三个设置项：卡片化 + 左侧图标 + 右侧控件 + 状态点
+    const rows = [
+      {
+        y: 204, icon: 'eye', label: '认知友好模式', desc: '（放大文字、放缓拆解、关闭震颤）',
+        on: !!game.settings.friendly, onTxt: '已开启', offTxt: '已关闭',
+        toggle: function () { game.settings.friendly = !game.settings.friendly; persist(); }
+      },
+      {
+        y: 290, icon: 'play', label: '自动播放', desc: '（对话自动推进，适合观看剧情/录屏）',
+        on: !!game.settings.auto, onTxt: '自动', offTxt: '手动',
+        toggle: function () { game.settings.auto = !game.settings.auto; persist(); }
+      },
+      {
+        y: 376, icon: 'sound', label: '声音', desc: null,
+        on: !game.settings.muted, onTxt: '有声音', offTxt: '已静音',
+        toggle: function () {
+          game.settings.muted = !game.settings.muted;
+          Au.ensure(); Au.setMuted(game.settings.muted);
+          persist();
+        }
+      }
+    ];
+    rows.forEach(function (r) {
+      // 卡片底：比面板亮一档 + 1px 淡描边，把「标签 + 控件」圈成一组
+      // 面板为 340..940，左右各留 36px 内边距，故卡片宽 528
+      ctx.save();
+      ctx.fillStyle = 'rgba(250,245,233,0.55)';
+      A.roundRect(ctx, 376, r.y, 528, 78, 6); ctx.fill();
+      ctx.strokeStyle = 'rgba(107,79,47,0.14)'; ctx.lineWidth = 1;
+      A.roundRect(ctx, 376.5, r.y + 0.5, 527, 77, 6); ctx.stroke();
+      ctx.restore();
 
-    A.setFont(ctx, 22, { align: 'left' });
-    ctx.fillStyle = P.ink;
-    ctx.fillText('自动播放', 400, 336);
-    A.setFont(ctx, 15, { align: 'left' });
-    ctx.fillStyle = P.inkLight;
-    ctx.fillText('（对话自动推进，适合观看剧情/录屏）', 400, 362);
-    btn(ctx, 700, 304, 180, 52, game.settings.auto ? '自动' : '手动', function () {
-      game.settings.auto = !game.settings.auto;
-      persist();
-    }, { size: 21, overlay: true });
+      // 左侧图标：开启态朱砂、关闭态淡墨，不读字也能分辨状态
+      A.icon(ctx, r.icon, 406, r.y + 39, 24, r.on ? P.redDeep : P.inkLight);
 
-    A.setFont(ctx, 22, { align: 'left' });
-    ctx.fillStyle = P.ink;
-    ctx.fillText('声音', 400, 420);
-    btn(ctx, 700, 390, 180, 52, game.settings.muted ? '已静音' : '有声音', function () {
-      game.settings.muted = !game.settings.muted;
-      Au.ensure(); Au.setMuted(game.settings.muted);
-      persist();
-    }, { size: 21, overlay: true });
+      A.setFont(ctx, 22, { align: 'left' });
+      ctx.fillStyle = P.ink;
+      ctx.fillText(r.label, 432, r.y + 44);
+      if (r.desc) {
+        A.setFont(ctx, 15, { align: 'left' });
+        ctx.fillStyle = P.inkLight;
+        ctx.fillText(r.desc, 432, r.y + 68);
+      }
+
+      btn(ctx, 700, r.y + 14, 180, 52, r.on ? r.onTxt : r.offTxt, r.toggle,
+        { size: 21, overlay: true, dot: r.on ? 'on' : 'off' });
+    });
 
     btn(ctx, 400, 462, 480, 48, resetArm > 0 ? '再点一次，确认清除存档' : '清除存档并回到开头', function () {
       if (resetArm > 0) {
@@ -748,6 +857,8 @@ XY.Game = (function () {
         resetArm = 2.5;
       }
     }, { size: 20, danger: true, overlay: true });
+    // 危险操作加警示图标
+    A.icon(ctx, 'warn', 424, 486, 18, P.red);
 
     btn(ctx, 490, 522, 300, 44, '关 闭', function () {
       game.overlay = null;
